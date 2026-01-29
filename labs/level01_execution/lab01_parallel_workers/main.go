@@ -9,6 +9,12 @@ import (
 	"sync"
 )
 
+type Statistics struct {
+	worker int
+	start time.Time
+	end time.Time
+}
+
 func main() {
 	fmt.Println("Hello Lab01")
 
@@ -20,7 +26,7 @@ func main() {
 	parallel_workers(n, low, high)
 }
 
-func parallel_workers(n, low, high int) {
+func parallel_workers(n, low, high int) []Statistics {
 	var wg sync.WaitGroup
 
 	// define durations upfront
@@ -28,21 +34,42 @@ func parallel_workers(n, low, high int) {
 	for i := range n {
 		durations[i] = rand.Intn(high-low+1) + low
 	}
-	
-	wg.Add(n)
+
+	// create channels
+	c := make(chan Statistics)	
 	for i := range n {
-		go block(i, durations[i], &wg)
+		wg.Add(1)
+		go block(i, durations[i], c, &wg)
 	}
 
-	wg.Wait()
+	go func() {
+		wg.Wait()
+		close(c)
+	}()
+
+	var stats []Statistics
+	for ch := range c {
+		log(ch.worker, ch.start, ch.end)
+		stats = append(stats, ch)
+	}
+	
+	return stats
 }
 
-func block(i, wait int, wg *sync.WaitGroup) {
+func block(i, wait int, c chan Statistics, wg *sync.WaitGroup) {
 	defer wg.Done()
-	
 
 	t0 := time.Now()
 	time.Sleep(time.Duration(wait) * time.Millisecond)
 	t1 := time.Now()
+
+	c <- Statistics{
+		worker: i,
+		start: t0,
+		end: t1,
+	};
+}
+
+func log(i int, t0, t1 time.Time) {
 	fmt.Printf("Worker %d started at %s ended at %s and ran for %dns\n", i, t0, t1, t1.Sub(t0))
 }

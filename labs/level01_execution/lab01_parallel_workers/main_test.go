@@ -13,15 +13,20 @@ func check_stats(n, low, high int, start, end time.Time, stats []Statistics) []s
 	var sequential_duration int64 = 0
 	var min_start time.Time
 	var max_end time.Time
+	var max_duration int64
 	for _, s := range stats {
+		worker_duration := int64(s.end.Sub(s.start).Milliseconds())
+		sequential_duration = sequential_duration + worker_duration
+		
 		if s.start.Compare(min_start) < 0 {
 			min_start = s.start
 		}
 		if s.end.Compare(max_end) > 0 {
 			max_end = s.end
 		}
-		worker_duration := int64(s.end.Sub(s.start).Milliseconds())
-		sequential_duration = sequential_duration + worker_duration
+		if worker_duration > max_duration {
+			max_duration = worker_duration
+		}
 
 		// check start < end
 		if s.start.Compare(s.end) >= 0 {
@@ -35,13 +40,13 @@ func check_stats(n, low, high int, start, end time.Time, stats []Statistics) []s
 	}
 
 	// check N workers completed
-	if len(stats) != 10000 {
+	if len(stats) != n {
 		errs = append(errs, "Not all logs returned")
 	}
 
 	// check total measured runtime is bound between max worker duration and sum of all worker durations
 	wall_clock_duration := end.Sub(start).Milliseconds()
-	if wall_clock_duration < int64(high) || wall_clock_duration > sequential_duration {
+	if wall_clock_duration < int64(max_duration) || wall_clock_duration > sequential_duration {
 		errs = append(errs, "measured runtime exceeded expectations")
 	}
 

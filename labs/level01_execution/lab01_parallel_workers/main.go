@@ -62,7 +62,6 @@ func block(i, wait int, c chan Statistics, wg *sync.WaitGroup) {
 	t0 := time.Now()
 	time.Sleep(time.Duration(wait) * time.Millisecond)
 	t1 := time.Now()
-
 	c <- Statistics{
 		worker: i,
 		start: t0,

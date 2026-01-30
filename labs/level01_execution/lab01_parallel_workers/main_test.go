@@ -29,7 +29,7 @@ func check_stats(n, low, high int, start, end time.Time, stats []Statistics) []s
 		}
 
 		// check duration >= low
-		if s.end.Sub(s.start).Milliseconds() < int64(low) {
+		if worker_duration < int64(low) {
 			errs = append(errs, "duration does not exceed minimum value")
 		}
 	}
@@ -39,10 +39,11 @@ func check_stats(n, low, high int, start, end time.Time, stats []Statistics) []s
 		errs = append(errs, "Not all logs returned")
 	}
 
-	// check total measured runtime does not exceed max duration by an appreciable amount.
-	//if end.Sub(start).Milliseconds() > int64(high + 10)  {
-	//	errs = append(errs, "measured runtime exceeded expectations")
-	//}
+	// check total measured runtime is bound between max worker duration and sum of all worker durations
+	wall_clock_duration := end.Sub(start).Milliseconds()
+	if wall_clock_duration < int64(high) || wall_clock_duration > sequential_duration {
+		errs = append(errs, "measured runtime exceeded expectations")
+	}
 
 	// check for proof of concurrency
 	is_concurrent := false

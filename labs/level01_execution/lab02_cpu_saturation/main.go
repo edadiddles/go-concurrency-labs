@@ -22,16 +22,19 @@ func main() {
 
 	n, _ := strconv.Atoi(os.Args[1])
 	mode := os.Args[2]
+	low, _ := strconv.Atoi(os.Args[3])
+	high, _ := strconv.Atoi(os.Args[4])
 
 	fmt.Printf("Workers: %d\nMode: %s\n\n", n, mode)
 
-	stats := saturated_execution(n, mode)
+	stats := saturated_execution(n, low, high, mode)
 
 	log_stats(stats)
 }
 
-func saturated_execution(n int, mode string) []Statistics {
+func saturated_execution(n, low, high int, mode string) []Statistics {
 	worker_modes := make([]string, n)
+	worker_durations := make([]int, n)
 	fmt.Println("starting saturated execution")
 	for i := range n {
 		m := mode
@@ -50,13 +53,16 @@ func saturated_execution(n int, mode string) []Statistics {
 		default:
 			panic("mode is not known should be: cpu, blocking, mixed")
 		}
+
+
+		worker_durations[i] = rand.Intn(high - low) + low
 	}
 
 	ch := make(chan Statistics)
 	var wg sync.WaitGroup
 	for i := range n {
 		wg.Add(1)
-		go perform_work(i, worker_modes[i], &wg, ch)
+		go perform_work(i, worker_durations[i], worker_modes[i], ch, &wg)
 	}
 
 	go func() {
@@ -72,15 +78,15 @@ func saturated_execution(n int, mode string) []Statistics {
 	return stats
 }
 
-func perform_work(id int, mode string, wg *sync.WaitGroup, ch chan Statistics) {
+func perform_work(id, duration int, mode string, ch chan Statistics, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	start := time.Now()
 	switch mode {
 	case "blocking":
-		blocking_op()
+		blocking_op(duration)
 	case "cpu":
-		cpu_op()
+		cpu_op(duration)
 	}
 	end := time.Now()
 
@@ -92,13 +98,13 @@ func perform_work(id int, mode string, wg *sync.WaitGroup, ch chan Statistics) {
 	}
 }
 
-func blocking_op() {
-	time.Sleep(time.Duration(100) * time.Millisecond)
+func blocking_op(duration int) {
+	time.Sleep(time.Duration(duration) * time.Millisecond)
 }
 
-func cpu_op() {
+func cpu_op(duration int) {
 	start := time.Now()
-	for time.Since(start).Milliseconds() < int64(100) {
+	for time.Since(start).Milliseconds() < int64(duration) {
 		// perform some non-trival computation
 		a := float64(time.Now().UnixMicro()) / math.Pi
 		b := math.Sqrt(a) + math.Phi

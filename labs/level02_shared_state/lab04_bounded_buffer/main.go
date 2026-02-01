@@ -108,7 +108,6 @@ func producer(id, n int, buffer *BoundedBuffer, ch chan Record, wg *sync.WaitGro
 
 func consumer(buffer *BoundedBuffer, ch chan Record, wg *sync.WaitGroup) {
 	defer wg.Done()
-	fmt.Println("consumer online")
 
 	last_update := time.Now()
 	for time.Since(last_update).Milliseconds() < int64(1000) {

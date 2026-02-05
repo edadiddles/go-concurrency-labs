@@ -39,14 +39,28 @@ func main() {
 
 func fan_in_out(n, w, low, high int) int {
 	var worker_wg sync.WaitGroup
-	work_channel := make(chan WorkItem, n)
-	result_channel := make(chan Result, n)
+	work_channel := make(chan WorkItem, 10)
+	result_channel := make(chan Result, 5)
 
 	// fan in
+	go fan_in(w, work_channel, result_channel, &worker_wg)
+
+	// fan out
+	go fan_out(n, low, high, work_channel)
+
+	sum := 0
+	for res := range result_channel {
+		sum += res.val
+	}
+
+	return sum
+}
+
+func fan_in(w int, in_channel <- chan WorkItem, out_channel chan <- Result, wg *sync.WaitGroup) {
 	for range w {
-		worker_wg.Add(1)
+		wg.Add(1)
 		go func(in_ch <- chan WorkItem, out_ch chan <- Result, wg *sync.WaitGroup) {
-			defer worker_wg.Done()
+			defer wg.Done()
 			for work_item := range in_ch {
 				val := work_item.task()
 				res := Result{
@@ -55,30 +69,26 @@ func fan_in_out(n, w, low, high int) int {
 				}
 				out_ch <- res
 			}
-		}(work_channel, result_channel, &worker_wg)
+		}(in_channel, out_channel, wg)
 	}
+	go func() {
+		wg.Wait()
+		close(out_channel)
+	}()
+}
 
-	// fan out
+func fan_out(n, low, high int, in_channel chan <- WorkItem) {	
 	for k := range n {
 		d := rand.Intn(high-low+1) + low
 		task := func() int {
 			time.Sleep(time.Duration(d) * time.Millisecond)
 			return k+1
 		}
-		work_channel <- WorkItem{
+		in_channel <- WorkItem{
 			id: k,
 			task: task,
 		}
 	}
 
-	close(work_channel)
-	worker_wg.Wait()
-	close(result_channel)
-
-	sum := 0
-	for res := range result_channel {
-		sum += res.val
-	}
-
-	return sum
+	close(in_channel)
 }

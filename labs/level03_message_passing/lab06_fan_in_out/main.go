@@ -78,9 +78,7 @@ func fan_in_out(n, w, low, high int) int {
 	sum := 0
 	for res := range result_channel {
 		sum += res.val
-		fmt.Println(sum)
 	}
 
 	return sum
 }
-

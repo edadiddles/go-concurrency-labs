@@ -86,17 +86,18 @@ func worker(id, p int, durations []int, b *BarrierCounter, wg *sync.WaitGroup, c
 		barriers: make([]BarrierReport, 0),
 	}
 	for phase_id := range p {
-		arrival_time := time.Now()
 		time.Sleep(time.Duration(durations[phase_id])*time.Millisecond)	
+		arrival_time := time.Now()
 
 		b.cond.L.Lock()
+		generation := b.generation
 		b.cnt += 1
 		if b.cnt == b.chk_val {
 			b.cnt = 0
 			b.generation += 1
 			b.cond.Broadcast()
 		}
-		for phase_id == b.generation {
+		for generation == b.generation {
 			b.cond.Wait()
 		}	
 		b.cond.L.Unlock()

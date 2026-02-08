@@ -11,6 +11,7 @@ import (
 
 type BarrierCounter struct {
 	cond *sync.Cond
+	generation int
 	cnt int
 	chk_val int
 }
@@ -51,6 +52,7 @@ func barrier(n, p, low, high int) []WorkerReport {
 		durations[k] = rand.Intn(high-low+1) + low
 	}
 
+	var wg sync.WaitGroup
 	var mu sync.Mutex
 	counter := BarrierCounter{
 		cond: sync.NewCond(&mu),
@@ -59,38 +61,45 @@ func barrier(n, p, low, high int) []WorkerReport {
 	}
 	ch := make(chan WorkerReport)
 	for id := range n {
-		go worker(id, p, durations[p*id:p*(id+1)], &counter, ch)
+		wg.Add(1)
+		go worker(id, p, durations[p*id:p*(id+1)], &counter, &wg, ch)
 	}
 
-	worker_reports := make([]WorkerReport, n)
-	cnt := 0
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+
+	worker_reports := make([]WorkerReport, 0)
 	for r := range ch {
-		worker_reports[cnt] = r
-		cnt += 1
-		if cnt == n {
-			close(ch)
-		}
+		worker_reports = append(worker_reports, r)
 	}
 
 	return  worker_reports
 }
 
-func worker(id, num_phases int, durations []int, counter *BarrierCounter, ch chan WorkerReport) {
+func worker(id, p int, durations []int, b *BarrierCounter, wg *sync.WaitGroup, ch chan WorkerReport) {
+	defer wg.Done()
+
 	worker_report := WorkerReport{
 		id: id,
 		barriers: make([]BarrierReport, 0),
 	}
-	for phase_id := range num_phases {
+	for phase_id := range p {
 		arrival_time := time.Now()
 		time.Sleep(time.Duration(durations[phase_id])*time.Millisecond)	
 
-		counter.cond.L.Lock()
-		counter.cnt += 1
-		for counter.cnt < counter.chk_val {
-			counter.cond.Wait()
+		b.cond.L.Lock()
+		b.cnt += 1
+		if b.cnt == b.chk_val {
+			b.cnt = 0
+			b.generation += 1
+			b.cond.Broadcast()
 		}
-		counter.cond.Broadcast()
-		counter.cond.L.Unlock()
+		for phase_id == b.generation {
+			b.cond.Wait()
+		}	
+		b.cond.L.Unlock()
 
 		report := BarrierReport{
 			id: phase_id,

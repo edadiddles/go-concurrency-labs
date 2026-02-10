@@ -19,11 +19,13 @@ type SharedResource struct {
 type WorkerAccessRecord struct {
 	id int
 	performed_initialization bool
+	initialization_time time.Time
 	access_time time.Time
 }
 
 type AccessReport struct {
 	initialized bool
+	initialization_time time.Time
 	access_records []WorkerAccessRecord
 }
 
@@ -69,17 +71,20 @@ func run_once(n, low, high int) AccessReport {
 		close(ch)
 	}()
 
+	var initialization_time time.Time
 	is_initialized := false
 	access_records := make([]WorkerAccessRecord, 0)
 	for rec := range ch {
 		if rec.performed_initialization {
 			is_initialized = true
+			initialization_time = rec.initialization_time
 		}
 		access_records = append(access_records, rec)
 	}
 
 	return AccessReport{
 		initialized: is_initialized,
+		initialization_time: initialization_time,
 		access_records: access_records,
 	}
 }
@@ -105,6 +110,7 @@ func worker(id, d int, r *SharedResource, ch chan WorkerAccessRecord, wg *sync.W
 	ch <- WorkerAccessRecord{
 		id: id,
 		performed_initialization: performed_initialized,
+		initialization_time: r.initialization_time,
 		access_time: access_time,
 	}
 }

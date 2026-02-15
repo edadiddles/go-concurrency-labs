@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"os"
@@ -10,10 +11,10 @@ import (
 )
 
 type Task struct {
-	id         int
-	duration   int
-	timeout    int
-	queue_time time.Time
+	id       int
+	duration int
+	ctx      context.Context
+	cancel   context.CancelFunc
 }
 
 type TimeoutReport struct {
@@ -54,11 +55,21 @@ func timeout_queue(n, c, p, low, high int) TimeoutReport {
 
 	go func() {
 		for task_id := range 1000 {
-			queue <- Task{
-				id:         task_id,
-				duration:   rand.Intn(high-low-+1) + low,
-				timeout:    p,
-				queue_time: time.Now(),
+			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(p)*time.Millisecond)
+			task := Task{
+				id:       task_id,
+				duration: rand.Intn(high-low-+1) + low,
+				ctx:      ctx,
+				cancel:   cancel,
+			}
+
+			select {
+			case queue <- task:
+				//accepted
+			case <-ctx.Done():
+				cancel()
+				ch <- TimeoutReport{submitted: 1, discarded: 1}
+				continue
 			}
 
 			time.Sleep(time.Duration(rand.Intn(2)) * time.Millisecond)
@@ -70,7 +81,7 @@ func timeout_queue(n, c, p, low, high int) TimeoutReport {
 		wg.Wait()
 		close(ch)
 	}()
-	
+
 	submitted := 0
 	completed := 0
 	timed_out := 0
@@ -97,48 +108,21 @@ func worker(id int, queue chan Task, ch chan TimeoutReport, wg *sync.WaitGroup) 
 	submitted := 0
 	completed := 0
 	timed_out := 0
-	discarded := 0
-	timeout_ch := make(chan int)
 	for t := range queue {
 		submitted += 1
-		if  time.Since(t.queue_time) > time.Duration(t.timeout)*time.Millisecond {
-			discarded += 1
-			continue
-		}
-		go timeout(t, timeout_ch)
-	loop:
-		for {
-			select {
-			case to := <-timeout_ch:
-				if to == t.id {
-					timed_out += 1
-					break loop
-				}
-			case <-time.After(time.Duration(t.duration) * time.Millisecond):
-				completed += 1
-				break loop
-			}
+		select {
+		case <-t.ctx.Done():
+			timed_out += 1
+			t.cancel()
+		case <-time.After(time.Duration(t.duration) * time.Millisecond):
+			completed += 1
+			t.cancel()
 		}
 	}
 
-	close(timeout_ch)
 	ch <- TimeoutReport{
 		submitted: submitted,
 		completed: completed,
 		timed_out: timed_out,
-		discarded: discarded,
-	}
-}
-
-func timeout(task Task, ch chan int) {
-	loop:
-	for {
-		select {
-		case <- ch:
-			break loop
-		case <- time.After(time.Duration(task.timeout)*time.Millisecond):
-			ch <- task.id
-			break loop
-		}
 	}
 }
